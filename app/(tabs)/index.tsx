@@ -1,117 +1,165 @@
+import * as Haptics from 'expo-haptics';
 import { LightSensor } from 'expo-sensors';
-import React, { useEffect, useRef, useState } from 'react';
-import { Button, StyleSheet, Text, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export default function App() {
-  const LOW_THRESHOLD = 10;
-  const HIGH_THRESHOLD = 40;
-  const DARKNESS_DURATION_MS = 1200;
-
-  const [lux, setLux] = useState<number>(0);
   const [prostrationCount, setProstrationCount] = useState(0);
-  const [subscription, setSubscription] = useState(null);
+  const [bowCount, setBowCount] = useState(0);
+  const [lux, setLux] = useState<number>(0);
+  const [lastSujoodDuration, setLastSujoodDuration] = useState<number | null>(null);
+
+  const LOW_THRESHOLD = 45;
+  const HIGH_THRESHOLD = 80;
+  const DARKNESS_TIMEOUT_MS = 600;
 
   const darkSinceRef = useRef<number | null>(null);
-  const lastLuxRef = useRef(null);
+  const isDarkRef = useRef(false);
+  const subscriptionRef = useRef<any>(null);
 
-  useEffect(() => {
-    return () => {
-      stopSensor();
-    };
-  }, []);
-
-  const startSensor = () => {
+  const start = () => {
     console.log('🟢 Sensor started');
-    const sub = LightSensor.addListener(data => {
-      const currentLux = data.illuminance ?? 0;
+    subscriptionRef.current = LightSensor.addListener(reading => {
+      const currentLux = reading.illuminance;
       setLux(currentLux);
-      lastLuxRef.current = currentLux;
+      console.log('📊 Lux:', currentLux);
 
       const now = Date.now();
-      console.log(`📊 Lux: ${currentLux.toFixed(1)}`);
 
       if (currentLux < LOW_THRESHOLD) {
         if (!darkSinceRef.current) {
           darkSinceRef.current = now;
           console.log('🔴 Started darkness timer');
-        } else if (now - darkSinceRef.current > DARKNESS_DURATION_MS) {
-          console.log('🔴 Going dark! Sujood detected and counted.');
-          setProstrationCount(prev => prev + 1);
-          darkSinceRef.current = null; // reset
+        } else if (!isDarkRef.current && now - darkSinceRef.current >= DARKNESS_TIMEOUT_MS) {
+          const duration = now - darkSinceRef.current;
+          setProstrationCount(prev => {
+            const newCount = prev + 1;
+
+            // Increment bowCount every two sujood
+            if (newCount % 2 === 0) {
+              setBowCount(b => b + 1);
+            }
+
+            // Haptic feedback on successful sujood
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+            setLastSujoodDuration(duration / 1000);
+            console.log('🔴 Going dark! Sujood detected and counted.');
+
+            return newCount;
+          });
+
+          isDarkRef.current = true;
         }
       } else if (currentLux > HIGH_THRESHOLD) {
-        if (darkSinceRef.current) {
+        if (isDarkRef.current || darkSinceRef.current) {
           console.log('🟢 Bright again, resetting dark state');
         }
         darkSinceRef.current = null;
+        isDarkRef.current = false;
       } else {
-        console.log('⚪ Lux between thresholds, reset darkSince');
-        darkSinceRef.current = null;
+        if (darkSinceRef.current !== null) {
+          console.log('⚪ Lux between thresholds, reset darkSince');
+          darkSinceRef.current = null;
+        }
       }
     });
-
-    setSubscription(sub);
   };
 
-  const stopSensor = () => {
-    subscription?.remove();
-    setSubscription(null);
+  const stop = () => {
     console.log('🔴 Sensor stopped');
-  };
-
-  const resetCounters = () => {
-    setProstrationCount(0);
+    subscriptionRef.current?.remove();
+    subscriptionRef.current = null;
     darkSinceRef.current = null;
-    console.log('🔁 Counters reset');
+    isDarkRef.current = false;
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🕌 Sujood Counter</Text>
-      <Text style={styles.label}>Prostrations: {prostrationCount}</Text>
-      <Text style={[styles.label, styles.bowsCount]}>Bows: {Math.floor(prostrationCount / 2)}</Text>
-      <Text style={styles.label}>Lux: {lux !== null ? lux.toFixed(1) : 'N/A'}</Text>
-      <Text style={styles.label}>
-        Covered: {lux !== null && lux < LOW_THRESHOLD ? 'Yes' : 'No'}
-      </Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      {/* Uncomment if image is resolved */}
+      {/* <Image
+        source={require('../../assets/images/kaaba1.jpg')}
+        style={styles.image}
+        resizeMode="cover"
+      /> */}
+
+      <Text style={styles.header}>عداد الصلاة</Text>
+
+      <View style={styles.counterContainer}>
+        <Text style={styles.countLabel}>السجود (Prostrations):</Text>
+        <Text style={styles.count}>{prostrationCount}</Text>
+        <Text style={styles.countLabel}>الركوع (Bows):</Text>
+        <Text style={styles.bowCount}>{bowCount}</Text>
+      </View>
 
       <View style={styles.buttonContainer}>
-        <Button title="Start" onPress={startSensor} disabled={!!subscription} />
-        <Button title="Stop" onPress={stopSensor} disabled={!subscription} />
-        <Button title="Reset" onPress={resetCounters} />
+        <Button title="ابدأ (Start)" onPress={start} color="#0c3d0eff" />
+        <View style={{ height: 10 }} />
+        <Button title="توقف (Stop)" onPress={stop} color="#470f0bff" />
       </View>
-    </View>
+
+      <Text style={styles.luxText}>🌞 الإضاءة: {lux?.toFixed(1) ?? '0.0'} lux</Text>
+
+      {lastSujoodDuration !== null && (
+        <Text style={styles.timerText}>
+          ⏱️ مدة السجود الأخير: {lastSujoodDuration.toFixed(1)} ثانية
+        </Text>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#111',
+    paddingTop: 50,
+    paddingBottom: 60,
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+    backgroundColor: '#111',
+    flexGrow: 1,
   },
-  title: {
+  header: {
     fontSize: 28,
     fontWeight: 'bold',
+    marginVertical: 15,
+    color: '#ddd',
+  },
+  image: {
+    width: '90%',
+    height: 200,
+    borderRadius: 12,
     marginBottom: 20,
+  },
+  counterContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  countLabel: {
+    fontSize: 20,
+    marginTop: 10,
     color: '#fff',
   },
-  label: {
-    fontSize: 20,
-    marginVertical: 5,
-    color: '#ccc',
+  count: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+  },
+  bowCount: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#d9dde2ff',
   },
   buttonContainer: {
-    marginTop: 30,
-    gap: 10,
-    width: '60%',
+    marginVertical: 20,
+    width: '70%',
   },
-  bowsCount: {
-    fontSize: 32,        // bigger font size for Bows
-    fontWeight: 'bold',  // make it bold for emphasis
-    color: '#fff',       // brighter color for better visibility
-    marginVertical: 10,
+  luxText: {
+    fontSize: 24,
+    marginTop: 10,
+    color: '#4CAF50',
+  },
+  timerText: {
+    fontSize: 18,
+    marginTop: 10,
+    color: '#fff',
   },
 });
