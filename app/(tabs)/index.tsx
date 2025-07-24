@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export default function App() {
+  const [sub, setSub] = useState(false);
   const [prostrationCount, setProstrationCount] = useState(0);
   const [bowCount, setBowCount] = useState(0);
   const [lux, setLux] = useState<number>(0);
@@ -17,8 +18,14 @@ export default function App() {
   const isDarkRef = useRef(false);
   const subscriptionRef = useRef<any>(null);
 
+  const reset = () => {
+    setProstrationCount(0);
+    setBowCount(0);
+  };
+
   const start = () => {
     console.log('🟢 Sensor started');
+    setSub(true);
     subscriptionRef.current = LightSensor.addListener(reading => {
       const currentLux = reading.illuminance;
       setLux(currentLux);
@@ -72,6 +79,7 @@ export default function App() {
     subscriptionRef.current = null;
     darkSinceRef.current = null;
     isDarkRef.current = false;
+    setSub(false);
   };
 
   return (
@@ -93,9 +101,11 @@ export default function App() {
       </View>
 
       <View style={styles.buttonContainer}>
-        <Button title="ابدأ (Start)" onPress={start} color="#0c3d0eff" />
-        <View style={{ height: 10 }} />
-        <Button title="توقف (Stop)" onPress={stop} color="#470f0bff" />
+        <Button title="ابدأ (Start)" onPress={start} color="#0c3d0eff" disabled={!!sub} />
+        <View style={{ height: 10, padding: 20 }} />
+        <Button title="توقف (Stop)" onPress={stop} color="#470f0bff" disabled={!sub} />
+        <View style={{ height: 10, padding: 20 }} />
+        <Button title="Reset" onPress={reset} />
       </View>
 
       <Text style={styles.luxText}>🌞 الإضاءة: {lux?.toFixed(1) ?? '0.0'} lux</Text>
